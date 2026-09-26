@@ -1,0 +1,30 @@
+[package]
+name = "esp-ns-display"
+version = "0.1.0"
+authors = ["Jasper Albering <jasper.albering@gmail.com>"]
+edition = "2021"
+license = "MIT"
+
+[target.xtensa-esp32-none-elf.dependencies]
+esp-hal = { version = "1.2.2", features = ["esp32", "unstable"] }
+esp-backtrace = { version = "0.20.0", features = [
+    "esp32",
+    "panic-handler",
+    "println",
+] }
+esp-println = { version = "0.18.0", features = ["esp32"] }
+
+[dependencies]
+profont = "0.7.0"
+embedded-hal = "1.0.0"
+embedded-graphics = "0.8.2"
+embedded-graphics-core = "0.4.1"
+display-interface = "0.5.0"
+ssd1306 = "0.10.0"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s" # Optimize for binary size
