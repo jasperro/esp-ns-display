@@ -17,9 +17,39 @@ use esp_hal::{
     delay::Delay,
     i2c::master::{Config as I2cConfig, I2c},
     main,
-    time::Rate,
+    time::RateExtU32
 };
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+
+#[repr(C)]
+pub struct EspAppDesc {
+    pub magic_word: u32,
+    pub secure_version: u32,
+    pub reserv1: [u32; 2],
+    pub version: [u8; 32],
+    pub project_name: [u8; 32],
+    pub time: [u8; 16],
+    pub date: [u8; 16],
+    pub idf_ver: [u8; 32],
+    pub app_elf_sha256: [u8; 32],
+    pub reserv2: [u32; 20],
+}
+
+#[used]
+#[export_name = "esp_app_desc"]
+#[link_section = ".app_desc"]
+pub static ESP_APP_DESC: EspAppDesc = EspAppDesc {
+    magic_word: 0xabcd5432,
+    secure_version: 0,
+    reserv1: [0; 2],
+    version: *b"0.1.0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+    project_name: *b"esp-ns-display\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+    time: *b"00:00:00\0\0\0\0\0\0\0\0",
+    date: *b"Jan  1 2026\0\0\0\0\0",
+    idf_ver: *b"v5.0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+    app_elf_sha256: [0; 32],
+    reserv2: [0; 20],
+};
 
 // -----------------------------------------------------------------------------
 // Display Settings Configuration
@@ -99,11 +129,11 @@ fn main() -> ! {
 
     let i2c = I2c::new(
         peripherals.I2C0,
-        I2cConfig::default().with_frequency(Rate::from_khz(400)),
+        I2cConfig::default().with_frequency(400_u32.kHz()),
     )
     .expect("Failed to initialize I2C")
-    .with_sda(peripherals.GPIO21)
-    .with_scl(peripherals.GPIO22);
+    .with_sda(peripherals.GPIO16)
+    .with_scl(peripherals.GPIO17);
 
     let interface = I2CDisplayInterface::new(i2c);
     let mut display: Ssd1306<_, _, BufferedGraphicsMode<_>> =

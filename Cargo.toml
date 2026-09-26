@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [target.xtensa-esp32-none-elf.dependencies]
-esp-hal = { version = "1.2.2", features = ["esp32", "unstable"] }
+esp-hal = { version = "0.23.0", features = ["esp32", "unstable"] }
 esp-backtrace = { version = "0.20.0", features = [
     "esp32",
     "panic-handler",
