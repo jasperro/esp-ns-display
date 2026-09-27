@@ -6,13 +6,21 @@ edition = "2021"
 license = "MIT"
 
 [target.xtensa-esp32-none-elf.dependencies]
-esp-hal = { version = "0.23.0", features = ["esp32", "unstable"] }
+esp-hal = { version = "0.23.1", features = ["esp32", "unstable"] }
 esp-backtrace = { version = "0.20.0", features = [
     "esp32",
     "panic-handler",
     "println",
 ] }
-esp-println = { version = "0.18.0", features = ["esp32"] }
+esp-println = { version = "0.18.0", features = ["esp32", "log-04"] }
+esp-wifi = { version = "0.12.0", features = [
+    "esp32",
+    "wifi",
+    "xtensa-lx-rt",
+    "esp-alloc",
+] }
+esp-hal-embassy = { version = "0.6.0", features = ["esp32"] }
+esp-alloc = { version = "0.6.0" }
 
 [dependencies]
 profont = "0.7.0"
@@ -20,11 +28,29 @@ embedded-hal = "1.0.0"
 embedded-graphics = "0.8.2"
 embedded-graphics-core = "0.4.1"
 display-interface = "0.5.0"
-ssd1306 = "0.10.0"
+ssd1306 = { version = "0.10.0", features = ["async"] }
+embassy-sync = "0.6.0"
+picoserve = { version = "0.20.1", features = ["embassy", "json"] }
+static_cell = { version = "2.1.1", features = ["nightly"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+embassy-executor = { version = "0.7.0", features = [
+    "nightly",
+    "executor-thread",
+] }
+embassy-time = { version = "0.5.1" }
+embassy-net = { version = "0.9.1", features = [
+    "tcp",
+    "udp",
+    "dhcpv4",
+    "medium-ethernet",
+] }
+
 
 [profile.dev]
 panic = "abort"
 
 [profile.release]
 panic = "abort"
-opt-level = "s" # Optimize for binary size
+opt-level = "s"

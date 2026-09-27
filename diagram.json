@@ -4,7 +4,7 @@
   "editor": "wokwi",
   "parts": [
     {
-      "type": "wokwi-esp32-devkit-v1",
+      "type": "board-wemos-lolin32-lite",
       "id": "esp",
       "top": -128.8,
       "left": 53.1,
@@ -19,12 +19,12 @@
     }
   ],
   "connections": [
-    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
-    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
-    [ "oled1:SCL", "esp:D22", "green", [ "v0" ] ],
-    [ "oled1:SDA", "esp:D21", "blue", [ "v-19.2", "h-124.73" ] ],
-    [ "oled1:GND", "esp:GND.1", "black", [ "v-67.2", "h-96" ] ],
-    [ "oled1:VCC", "esp:3V3", "red", [ "v-28.8", "h0.15", "v-76.8", "h-201.75" ] ]
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "oled1:SCL", "esp:GPIO17", "green", [ "v0" ] ],
+    [ "oled1:SDA", "esp:GPIO16", "blue", [ "v-19.2", "h-124.73" ] ],
+    [ "oled1:GND", "esp:GND", "black", [ "v-67.2", "h-96" ] ],
+    [ "oled1:VCC", "esp:3V", "red", [ "v-28.8", "h0.15", "v-76.8", "h-201.75" ] ]
   ],
   "dependencies": {}
 }
