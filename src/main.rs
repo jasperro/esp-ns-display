@@ -74,5 +74,5 @@ async fn main(spawner: Spawner) {
     ));
 
     // Start Web Server Tasks
-    // web_server::start_web_server(spawner, stack).await;
+    web_server::start_web_server(spawner, stack).await;
 }

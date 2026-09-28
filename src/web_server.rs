@@ -10,9 +10,48 @@ use picoserve::{
 };
 
 use crate::config;
-use crate::display::{Settings, SETTINGS};
+use crate::display::{Settings, SETTINGS, DISPLAY_FRAME};
 
 pub struct AppProps;
+
+struct DisplayStream;
+
+impl picoserve::response::sse::EventSource for DisplayStream {
+    async fn write_events<W: picoserve::io::Write>(
+        self,
+        mut writer: picoserve::response::sse::EventWriter<'_, W>,
+    ) -> Result<(), W::Error> {
+        let mut receiver = match DISPLAY_FRAME.receiver() {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+        const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
+        loop {
+            let frame = receiver.changed().await;
+            
+            // Stream the 1024-byte frame in 4 smaller 256-byte chunks (512 hex chars)
+            // to avoid storing a 2KB buffer inside the async Future state machine.
+            let mut hex_buf = [0u8; 512];
+
+            for chunk_idx in 0..4 {
+                let start = chunk_idx * 256;
+                let chunk = &frame[start..start + 256];
+
+                for (i, &byte) in chunk.iter().enumerate() {
+                    hex_buf[i * 2] = HEX_DIGITS[(byte >> 4) as usize];
+                    hex_buf[i * 2 + 1] = HEX_DIGITS[(byte & 0x0F) as usize];
+                }
+
+                if let Ok(hex_str) = core::str::from_utf8(&hex_buf) {
+                    writer.write_event("frame", hex_str).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
 
 impl AppBuilder for AppProps {
     type PathRouter = impl picoserve::routing::PathRouter;
@@ -49,6 +88,10 @@ impl AppBuilder for AppProps {
                     Json(new_settings)
                 }),
             )
+            .route(
+                "/api/display/stream",
+                get(|| async { picoserve::response::sse::EventStream(DisplayStream) }),
+            )
     }
 }
 
@@ -61,9 +104,9 @@ async fn web_task(
     app: &'static AppRouter<AppProps>,
     config: &'static picoserve::Config,
 ) -> ! {
-    let mut tcp_rx_buffer = [0; 1024];
-    let mut tcp_tx_buffer = [0; 1024];
-    let mut http_buffer = [0; 2048];
+    let mut tcp_rx_buffer = [0; 512];
+    let mut tcp_tx_buffer = [0; 512];
+    let mut http_buffer = [0; 1024];
 
     println!("Web server listening on port {}", config::HTTP_SERVER_PORT);
 

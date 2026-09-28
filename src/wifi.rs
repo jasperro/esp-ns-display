@@ -71,7 +71,7 @@ pub async fn start_wifi(
     let config = embassy_net::Config::dhcpv4(Default::default());
     let seed = (rng.random() as u64) << 32 | (rng.random() as u64);
 
-    let resources = make_static!(StackResources<3>, StackResources::<3>::new());
+    let resources = make_static!(StackResources<6>, StackResources::<6>::new());
 
     let (stack, runner) = embassy_net::new(
         wifi_interface,

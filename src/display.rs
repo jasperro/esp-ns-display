@@ -1,5 +1,6 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::watch::Watch;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::{Image, ImageRawLE},
@@ -35,23 +36,61 @@ pub static SETTINGS: Mutex::<CriticalSectionRawMutex, Settings> = Mutex::<Critic
     scroll_pause_ticks: 20,
 });
 
+pub static DISPLAY_FRAME: Watch<CriticalSectionRawMutex, [u8; 1024], 2> = Watch::new();
+
+#[repr(C, align(4))]
+pub struct FrameBuffer(pub [u8; 1024]);
+
+impl OriginDimensions for FrameBuffer {
+    fn size(&self) -> Size {
+        Size::new(128, 64)
+    }
+}
+
+impl DrawTarget for FrameBuffer {
+    type Color = BinaryColor;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I: IntoIterator<Item = Pixel<BinaryColor>>>(&mut self, pixels: I) -> Result<(), Self::Error> {
+        for Pixel(Point { x, y }, color) in pixels {
+            if (0..128).contains(&x) && (0..64).contains(&y) {
+                let idx = (y as usize * 16) + (x as usize / 8);
+                let bit = 7 - (x % 8);
+                match color {
+                    BinaryColor::On => self.0[idx] |= 1 << bit,
+                    BinaryColor::Off => self.0[idx] &= !(1 << bit),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn clear(&mut self, color: BinaryColor) -> Result<(), Self::Error> {
+        self.0.fill(if color == BinaryColor::On { 0xFF } else { 0x00 });
+        Ok(())
+    }
+}
+
+#[repr(C, align(4))]
+struct LogoData(pub [u8; 16]);
+
 #[rustfmt::skip]
-const NS_LOGO_RAW: [u8; 16] = [
+const NS_LOGO_RAW: LogoData = LogoData([
     0x0f, 0x10, 0x10, 0x88, 0x20, 0x44, 0x7c, 0x3e, 
     0x22, 0x04, 0x11, 0x08, 0x08, 0xf0, 0x00, 0x00
-];
+]);
 
 #[rustfmt::skip]
-const RRR_LOGO_RAW: [u8; 16] = [
+const RRR_LOGO_RAW: LogoData = LogoData([
     0x73, 0x9c, 0x08, 0x42, 0x08, 0x42, 0x73, 0x9c, 
     0x63, 0x18, 0x52, 0x94, 0x4a, 0x52, 0x00, 0x00
-];
+]);
 
 #[rustfmt::skip]
-const BLAUWNET_LOGO_RAW: [u8; 16] = [
+const BLAUWNET_LOGO_RAW: LogoData = LogoData([
     0x08, 0x00, 0x08, 0x00, 0x0b, 0xc0, 0x08, 0x60, 
     0x08, 0x20, 0x08, 0x20, 0x04, 0x20, 0x03, 0xa0
-];
+]);
 
 #[derive(Copy, Clone)]
 enum OperatorLogo {
@@ -173,11 +212,12 @@ pub async fn display_task(
     let mut ov_via_pause: [u32; 3] = [20; 3];
 
     let mut tick: u32 = 0;
+    let mut fb = FrameBuffer([0u8; 1024]);
 
     loop {
         let config = { *SETTINGS.lock().await };
 
-        display.clear(BinaryColor::Off).unwrap();
+        fb.clear(BinaryColor::Off).ok();
 
         if screen_mode < departures.len() {
             let train = &departures[screen_mode];
@@ -196,7 +236,7 @@ pub async fn display_task(
             };
 
             Text::new(top_left_str, Point::new(0, 8), med_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             let show_track_top_right = ((tick / config.toggle_phase_ticks.max(1)) % 2) == 0;
@@ -215,28 +255,28 @@ pub async fn display_task(
             let name_len_px = (train.display_name.len() * 5) as i32;
             let name_x = (right_element_left_x - 4 - name_len_px).max(52);
             Text::new(train.display_name, Point::new(name_x, 7), small_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             if show_track_top_right && train.show_track {
-                draw_track_box(&mut display, train.track, Point::new(track_origin_x, 0), small_font);
+                draw_track_box(&mut fb, train.track, Point::new(track_origin_x, 0), small_font);
             } else {
                 match train.logo {
                     OperatorLogo::NS => {
-                        let raw = ImageRawLE::new(&NS_LOGO_RAW, 16);
-                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut display).unwrap();
+                        let raw = ImageRawLE::new(&NS_LOGO_RAW.0, 16);
+                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut fb).unwrap();
                     }
                     OperatorLogo::RRR => {
-                        let raw = ImageRawLE::new(&RRR_LOGO_RAW, 16);
-                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut display).unwrap();
+                        let raw = ImageRawLE::new(&RRR_LOGO_RAW.0, 16);
+                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut fb).unwrap();
                     }
                     OperatorLogo::Blauwnet => {
-                        let raw = ImageRawLE::new(&BLAUWNET_LOGO_RAW, 16);
-                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut display).unwrap();
+                        let raw = ImageRawLE::new(&BLAUWNET_LOGO_RAW.0, 16);
+                        Image::new(&raw, Point::new(128 - 16, 0)).draw(&mut fb).unwrap();
                     }
                     OperatorLogo::None => {
                         if train.show_track {
-                            draw_track_box(&mut display, train.track, Point::new(track_origin_x, 0), small_font);
+                            draw_track_box(&mut fb, train.track, Point::new(track_origin_x, 0), small_font);
                         }
                     }
                 }
@@ -246,7 +286,7 @@ pub async fn display_task(
             update_popback_scroll(&mut dest_scroll_x, &mut dest_pause, dest_px, 128, config.scroll_pause_ticks);
 
             Text::new(train.destination, Point::new(-dest_scroll_x, 21), bold_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             let via_px = (train.via_route.len() * 5) as i32;
@@ -254,16 +294,16 @@ pub async fn display_task(
             update_popback_scroll(&mut via_scroll_x, &mut via_pause, via_px, available_via_w, config.scroll_pause_ticks);
 
             Text::new(train.via_route, Point::new(20 - via_scroll_x, 31), small_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Rectangle::new(Point::new(0, 24), Size::new(20, 8))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Text::new("via ", Point::new(0, 31), small_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             let car_w = 12i32;
@@ -350,7 +390,7 @@ pub async fn display_task(
 
                     RoundedRectangle::new(rect, radii)
                         .into_styled(style)
-                        .draw(&mut display)
+                        .draw(&mut fb)
                         .ok();
 
                     let is_leading_car = (train.travel_left && Some(set_idx) == first_active_idx && is_first_car)
@@ -359,7 +399,7 @@ pub async fn display_task(
                     if is_leading_car {
                         let arrow_str = if train.travel_left { "<" } else { ">" };
                         Text::new(arrow_str, Point::new(current_x + 3, origin.y + 7), arrow_style)
-                            .draw(&mut display)
+                            .draw(&mut fb)
                             .ok();
                     }
 
@@ -369,7 +409,7 @@ pub async fn display_task(
 
             Rectangle::new(Point::new(0, 53), Size::new(128, 11))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             let hierna_px = (train.next_train_info.len() * 5) as i32;
@@ -377,30 +417,30 @@ pub async fn display_task(
             update_popback_scroll(&mut hierna_scroll_x, &mut hierna_pause, hierna_px, available_hierna_w, config.scroll_pause_ticks);
 
             Text::new(train.next_train_info, Point::new(41 - hierna_scroll_x, 60), inv_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Rectangle::new(Point::new(0, 53), Size::new(41, 11))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Text::new("Hierna: ", Point::new(1, 60), inv_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
         } else {
             Rectangle::new(Point::new(0, 0), Size::new(128, 9))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Text::new("Vertrek", Point::new(2, 7), inv_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             Text::new("14:21", Point::new(98, 7), inv_font)
-                .draw(&mut display)
+                .draw(&mut fb)
                 .unwrap();
 
             let y_offsets = [11i32, 28i32, 45i32];
@@ -416,7 +456,7 @@ pub async fn display_task(
                 update_popback_scroll(&mut ov_dest_scroll[i], &mut ov_dest_pause[i], dest_px, available_ov_w, config.scroll_pause_ticks);
 
                 Text::new(train.destination, Point::new(30 - ov_dest_scroll[i], row_y + 6), small_font)
-                    .draw(&mut display)
+                    .draw(&mut fb)
                     .unwrap();
 
                 let mut via_buf = [0u8; 32];
@@ -426,36 +466,42 @@ pub async fn display_task(
                 update_popback_scroll(&mut ov_via_scroll[i], &mut ov_via_pause[i], via_px, available_ov_w, config.scroll_pause_ticks);
 
                 Text::new(via_str, Point::new(30 - ov_via_scroll[i], row_y + 13), small_font)
-                    .draw(&mut display)
+                    .draw(&mut fb)
                     .unwrap();
 
                 Rectangle::new(Point::new(0, row_y), Size::new(30, 17))
                     .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
-                    .draw(&mut display)
+                    .draw(&mut fb)
                     .unwrap();
 
                 Text::new(train.dep_time, Point::new(0, row_y + 6), small_font)
-                    .draw(&mut display)
+                    .draw(&mut fb)
                     .unwrap();
 
                 let right_mask_w = track_box_w + 3;
                 Rectangle::new(Point::new(128 - right_mask_w, row_y), Size::new(right_mask_w as u32, 17))
                     .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
-                    .draw(&mut display)
+                    .draw(&mut fb)
                     .unwrap();
 
-                draw_track_box(&mut display, train.track, Point::new(track_origin_x, row_y), small_font);
+                draw_track_box(&mut fb, train.track, Point::new(track_origin_x, row_y), small_font);
 
                 if i < 2 {
                     Line::new(Point::new(0, row_y + 17), Point::new(128, row_y + 17))
                         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-                        .draw(&mut display)
+                        .draw(&mut fb)
                         .unwrap();
                 }
             }
         }
 
+        DISPLAY_FRAME.sender().send(fb.0);
+
+        let raw = ImageRawLE::new(&fb.0, 128);
+        display.clear(BinaryColor::Off).unwrap();
+        Image::new(&raw, Point::zero()).draw(&mut display).unwrap();
         display.flush().await.unwrap();
+
         Timer::after(Duration::from_millis(50)).await;
 
         tick += 1;
