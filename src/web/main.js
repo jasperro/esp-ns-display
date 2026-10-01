@@ -1,43 +1,31 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // --- OLED Canvas Setup ---
   const canvas = document.getElementById("oledCanvas");
   const ctx = canvas.getContext("2d");
   const imgData = ctx.createImageData(128, 64);
-
-  const statusBadge = document.getElementById("statusBadge");
-  const statusText = document.getElementById("statusText");
-
+  const status = document.getElementById("status");
+  const form = document.getElementById("settings-form");
+  const statusMsg = document.getElementById("status-msg");
   const frameBytes = new Uint8Array(1024);
 
-  // Initialize display background (Dark slate)
-  for (let i = 0; i < imgData.data.length; i += 4) {
-    imgData.data[i] = 15; // Red
-    imgData.data[i + 1] = 23; // Green
-    imgData.data[i + 2] = 42; // Blue
-    imgData.data[i + 3] = 255; // Alpha
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  // --- SSE Display Stream ---
+  // SSE Stream for OLED Mirror
   function connectStream() {
-    const eventSource = new EventSource("/api/display/stream");
+    const es = new EventSource("/api/display/stream");
 
-    eventSource.onopen = () => {
-      statusBadge.className = "status-badge status-connected";
-      statusText.textContent = "Live";
+    es.onopen = () => {
+      status.textContent = "Live";
+    };
+    es.onerror = () => {
+      status.textContent = "Reconnecting...";
     };
 
     let hexAccumulator = "";
 
-    eventSource.addEventListener("frame", (event) => {
-      const chunk = event.data ? event.data.trim() : "";
-      hexAccumulator += chunk;
-
-      // Wait until full 2048-char hex frame is accumulated
+    es.addEventListener("frame", (e) => {
+      hexAccumulator += e.data ? e.data.trim() : "";
       if (hexAccumulator.length < 2048) return;
 
-      const hex = hexAccumulator.substring(0, 2048);
-      hexAccumulator = hexAccumulator.substring(2048); // keep overflow if any
+      const hex = hexAccumulator.slice(0, 2048);
+      hexAccumulator = hexAccumulator.slice(2048);
 
       for (let i = 0; i < 1024; i++) {
         frameBytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
@@ -46,62 +34,49 @@ document.addEventListener("DOMContentLoaded", () => {
       for (let y = 0; y < 64; y++) {
         const rowOffset = y * 16;
         for (let x = 0; x < 128; x++) {
-          const byteIndex = rowOffset + (x >> 3);
-          const bitIndex = 7 - (x & 7);
-          const isPixelOn = (frameBytes[byteIndex] & (1 << bitIndex)) !== 0;
+          const bitOn =
+            (frameBytes[rowOffset + (x >> 3)] & (1 << (7 - (x & 7)))) !== 0;
+          const idx = (y * 128 + x) * 4;
 
-          const pixelOffset = (y * 128 + x) * 4;
-
-          if (isPixelOn) {
-            imgData.data[pixelOffset] = 240;
-            imgData.data[pixelOffset + 1] = 248;
-            imgData.data[pixelOffset + 2] = 255;
-          } else {
-            imgData.data[pixelOffset] = 15;
-            imgData.data[pixelOffset + 1] = 23;
-            imgData.data[pixelOffset + 2] = 42;
-          }
+          imgData.data[idx] = bitOn ? 255 : 15;
+          imgData.data[idx + 1] = bitOn ? 255 : 23;
+          imgData.data[idx + 2] = bitOn ? 255 : 42;
+          imgData.data[idx + 3] = 255;
         }
       }
-
       ctx.putImageData(imgData, 0, 0);
     });
-
-    eventSource.onerror = () => {
-      statusBadge.className = "status-badge status-disconnected";
-      statusText.textContent = "Reconnecting...";
-    };
   }
 
-  // --- Settings Form ---
-  const form = document.getElementById("settings-form");
-  const statusMsg = document.getElementById("status-msg");
-
+  // Load API Settings
   async function loadSettings() {
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
-        const data = await res.json();
+        const d = await res.json();
+        document.getElementById("ns_station_code").value =
+          d.ns_station_code || "";
+        document.getElementById("ns_api_key").value = d.ns_api_key || "";
         document.getElementById("screen_dwell_ticks").value =
-          data.screen_dwell_ticks;
+          d.screen_dwell_ticks;
         document.getElementById("toggle_phase_ticks").value =
-          data.toggle_phase_ticks;
+          d.toggle_phase_ticks;
         document.getElementById("scroll_pause_ticks").value =
-          data.scroll_pause_ticks;
-      } else {
-        statusMsg.textContent = "Failed to load current settings.";
+          d.scroll_pause_ticks;
       }
-    } catch (err) {
-      statusMsg.textContent = "Error connecting to settings API.";
+    } catch {
+      statusMsg.textContent = "Failed to load settings.";
     }
   }
 
+  // Save Settings
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     statusMsg.textContent = "Saving...";
-    statusMsg.className = "status";
 
     const payload = {
+      ns_station_code: document.getElementById("ns_station_code").value.trim(),
+      ns_api_key: document.getElementById("ns_api_key").value.trim(),
       screen_dwell_ticks: parseInt(
         document.getElementById("screen_dwell_ticks").value,
         10,
@@ -123,14 +98,11 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        statusMsg.textContent = "Settings updated successfully!";
-        statusMsg.className = "status success";
-      } else {
-        statusMsg.textContent = "Error saving settings.";
-      }
-    } catch (err) {
-      statusMsg.textContent = "Network error while saving settings.";
+      statusMsg.textContent = res.ok
+        ? "Saved successfully!"
+        : "Error saving settings.";
+    } catch {
+      statusMsg.textContent = "Network error.";
     }
   });
 

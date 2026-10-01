@@ -34,7 +34,7 @@ picoserve = { version = "0.20.1", features = ["embassy", "json"] }
 static_cell = { version = "2.1.1", features = ["nightly"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
-
+heapless = { version = "0.9.3", features = ["serde"] }
 embassy-executor = { version = "0.7.0", features = [
     "nightly",
     "executor-thread",
@@ -45,8 +45,13 @@ embassy-net = { version = "0.9.1", features = [
     "udp",
     "dhcpv4",
     "medium-ethernet",
+    "dns",
 ] }
-
+edge-http = { version = "0.8.0", default-features = false, features = ["io"] }
+embedded-tls = { version = "0.19.0", default-features = false, features = [
+    "alloc",
+] }
+embedded-io-async = "0.7.0"
 
 [profile.dev]
 panic = "abort"

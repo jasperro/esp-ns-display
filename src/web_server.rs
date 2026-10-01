@@ -1,16 +1,18 @@
 use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::watch::Watch;
 use embassy_time::Duration;
 use esp_println::println;
 use picoserve::{
     extract::Json,
     make_static,
-    routing::{get, get_service, post, PathRouter},
+    routing::{get, get_service},
     AppBuilder, AppRouter,
-    Router,
 };
 
-use crate::config;
-use crate::display::{Settings, SETTINGS, DISPLAY_FRAME};
+use crate::config::{self, SETTINGS};
+
+pub static DISPLAY_FRAME: Watch<CriticalSectionRawMutex, [u8; 1024], 2> = Watch::new();
 
 pub struct AppProps;
 
@@ -48,8 +50,6 @@ impl picoserve::response::sse::EventSource for DisplayStream {
                 }
             }
         }
-
-        Ok(())
     }
 }
 
@@ -79,13 +79,13 @@ impl AppBuilder for AppProps {
             .route(
                 "/api/settings",
                 get(|| async {
-                    let settings = *SETTINGS.lock().await;
+                    let settings = SETTINGS.lock().await.clone();
                     Json(settings)
                 })
                 .post(|Json(new_settings)| async move {
                     let mut lock = SETTINGS.lock().await;
                     *lock = new_settings;
-                    Json(new_settings)
+                    Json(lock.clone())
                 }),
             )
             .route(
@@ -95,9 +95,7 @@ impl AppBuilder for AppProps {
     }
 }
 
-const WEB_TASK_POOL_SIZE: usize = config::WEB_TASK_POOL_SIZE;
-
-#[embassy_executor::task(pool_size = WEB_TASK_POOL_SIZE)]
+#[embassy_executor::task(pool_size = config::WEB_TASK_POOL_SIZE)]
 async fn web_task(
     id: usize,
     stack: embassy_net::Stack<'static>,
@@ -117,7 +115,7 @@ async fn web_task(
 }
 
 pub async fn start_web_server(spawner: Spawner, stack: embassy_net::Stack<'static>) {
-    println!("Starting web server with {WEB_TASK_POOL_SIZE} tasks...");
+    println!("Starting web server with {} tasks...", config::WEB_TASK_POOL_SIZE);
 
     let app = make_static!(AppRouter<AppProps>, AppProps.build_app());
 
@@ -132,7 +130,7 @@ pub async fn start_web_server(spawner: Spawner, stack: embassy_net::Stack<'stati
         .keep_connection_alive()
     );
 
-    for id in 0..WEB_TASK_POOL_SIZE {
+    for id in 0..config::WEB_TASK_POOL_SIZE {
         spawner.must_spawn(web_task(id, stack, app, config));
     }
 }

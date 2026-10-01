@@ -4,55 +4,48 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ESP32 Display Monitor</title>
+    <title>ESP32 Display</title>
     <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-    <main class="container">
-        <header class="header">
-            <h1>Display Monitor & Settings</h1>
-            <div id="statusBadge" class="status-badge status-connecting">
-                <span class="status-dot"></span>
-                <span id="statusText">Connecting...</span>
-            </div>
-        </header>
+    <div class="container">
+        <h1>ESP32 Display Monitor</h1>
 
-        <section class="card">
-            <h2>Live OLED Mirror</h2>
-            <div class="oled-bezel">
-                <canvas id="oledCanvas" width="128" height="64"></canvas>
-            </div>
-            <footer class="card-footer">
-                <span>Resolution: 128 × 64 px</span>
-                <span>Protocol: SSE</span>
-            </footer>
-        </section>
+        <div class="card">
+            <h2>Live OLED Mirror (<span id="status">Disconnected</span>)</h2>
+            <canvas id="oledCanvas" width="128" height="64"></canvas>
+        </div>
 
-        <section class="card">
-            <h2>Display Configuration</h2>
+        <div class="card">
+            <h2>Settings</h2>
             <form id="settings-form">
-                <div class="form-group">
-                    <label for="screen_dwell_ticks">Screen Dwell Ticks</label>
-                    <input type="number" id="screen_dwell_ticks" name="screen_dwell_ticks" min="1" />
-                </div>
+                <label>Station Code
+                    <input type="text" id="ns_station_code" maxlength="8" placeholder="e.g. Amf" required />
+                </label>
 
-                <div class="form-group">
-                    <label for="toggle_phase_ticks">Toggle Phase Ticks</label>
-                    <input type="number" id="toggle_phase_ticks" name="toggle_phase_ticks" min="1" />
-                </div>
+                <label>API Key
+                    <input type="password" id="ns_api_key" maxlength="64" placeholder="NS API Subscription Key"
+                        required />
+                </label>
 
-                <div class="form-group">
-                    <label for="scroll_pause_ticks">Scroll Pause Ticks</label>
-                    <input type="number" id="scroll_pause_ticks" name="scroll_pause_ticks" min="0" />
-                </div>
+                <label>Screen Dwell Ticks
+                    <input type="number" id="screen_dwell_ticks" min="1" required />
+                </label>
 
-                <button type="submit" class="btn-primary">Save Settings</button>
+                <label>Toggle Phase Ticks
+                    <input type="number" id="toggle_phase_ticks" min="1" required />
+                </label>
+
+                <label>Scroll Pause Ticks
+                    <input type="number" id="scroll_pause_ticks" min="0" required />
+                </label>
+
+                <button type="submit">Save Settings</button>
             </form>
-
-            <div id="status-msg" class="status"></div>
-        </section>
-    </main>
+            <div id="status-msg"></div>
+        </div>
+    </div>
 
     <script src="main.js"></script>
 </body>

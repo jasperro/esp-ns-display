@@ -4,11 +4,12 @@
 
 use embassy_executor::Spawner;
 use esp_hal::clock::CpuClock;
-use esp_hal::rng::Rng;
+use esp_hal::rng::Trng;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
+use picoserve::make_static;
 
-use esp_ns_display::{display, web_server, wifi};
+use esp_ns_display::{display, ns_api, web_server, wifi};
 
 #[repr(C)]
 pub struct EspAppDesc {
@@ -59,12 +60,19 @@ async fn main(spawner: Spawner) {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let timg1 = TimerGroup::new(peripherals.TIMG1);
-    let mut rng = Rng::new(peripherals.RNG);
+    
+    let trng = make_static!(
+        Trng<'static>,
+        Trng::new(peripherals.RNG, peripherals.ADC1)
+    );
 
     esp_hal_embassy::init(timg0.timer0);
 
     // Start Wi-Fi network stack
-    let stack = wifi::start_wifi(timg1.timer0, &mut rng, peripherals.RADIO_CLK, peripherals.WIFI, spawner).await;
+    let stack = wifi::start_wifi(timg1.timer0, &mut trng.rng, peripherals.RADIO_CLK, peripherals.WIFI, spawner).await;
+    
+    // Start NS API Task
+    spawner.must_spawn(ns_api::ns_api_task(stack, trng));
 
     // Start Display Driver Task
     spawner.must_spawn(display::display_task(
